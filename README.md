@@ -28,8 +28,9 @@ Kick Drop Miner automates watching Kick.com streams so you can keep drop timers 
 
 ## Screenshot
 
+
 <p align="center">
-  <img src="https://i.postimg.cc/zXtswf4K/image.png" alt="Main window" width="600" />
+  <img src="https://github.com/user-attachments/assets/b7359232-a965-486f-9870-80d88736c14c" alt="Main window" width="600" />
 </p>
 <p align="center">
   <img src="https://i.postimg.cc/kX4Z5mDr/image.png" alt="Main window" width="600" />
