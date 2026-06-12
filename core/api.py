@@ -387,7 +387,7 @@ def fetch_drops_progress(driver=None, account_id=None):
             print("Establishing session on kick.com...")
             driver.get("https://kick.com")
             time.sleep(1)
-            _load_cookies_to_driver(driver)
+            _load_cookies_to_driver(driver, account_id)
         else:
             print("Fetching progress from API (reusing existing session)...")
         

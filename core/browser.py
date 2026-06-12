@@ -260,6 +260,11 @@ def make_chrome_driver(
     opts.add_argument("--no-sandbox")
     opts.add_argument("--disable-dev-shm-usage")
     opts.add_argument("--disable-blink-features=AutomationControlled")
+    opts.add_argument("--disable-background-timer-throttling")
+    opts.add_argument("--disable-backgrounding-occluded-windows")
+    opts.add_argument("--disable-renderer-backgrounding")
+    opts.add_argument("--disable-features=CalculateNativeWinOcclusion,IntensiveWakeUpThrottling")
+    opts.add_argument("--autoplay-policy=no-user-gesture-required")
     # Remove redundant experimental options to avoid parsing error
     # (undetected-chromedriver already handles this natively)
     opts.add_argument("--log-level=3")

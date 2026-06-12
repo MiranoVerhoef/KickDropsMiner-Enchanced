@@ -643,7 +643,7 @@ class WinUIBackend:
                 "state": self.state(),
             })
         if should_sync:
-            threading.Thread(target=self._sync_progress_timing, args=(idx,), daemon=True).start()
+            self._sync_progress_timing(idx)
 
     def _on_worker_finish(self, idx, elapsed, completed):
         with self._lock:
@@ -939,7 +939,10 @@ class WinUIBackend:
         if not item.get("is_global_drop") or not item.get("campaign_id"):
             return False
         now = time.monotonic()
-        last = self._last_progress_sync.get(idx, 0)
+        last = self._last_progress_sync.get(idx)
+        if last is None:
+            self._last_progress_sync[idx] = now
+            return False
         if now - last < 900:
             return False
         self._last_progress_sync[idx] = now
@@ -952,20 +955,19 @@ class WinUIBackend:
             item = self.config.items[idx]
             campaign_id = item.get("campaign_id")
             account_id = item.get("account_id")
+            worker = self.workers.get(idx)
+            driver = getattr(worker, "driver", None) if worker else None
             if not campaign_id:
                 return
+            if not driver:
+                self._log_item(item, "Timing check skipped: active browser session is not ready")
+                return
 
-        driver = None
         try:
-            result = fetch_drops_progress(account_id=account_id)
-            driver = result.get("driver")
+            result = fetch_drops_progress(driver=driver, account_id=account_id)
             progress_data = result.get("progress", [])
             match = next((c for c in progress_data if isinstance(c, dict) and c.get("id") == campaign_id), None)
             if not match:
-                return
-
-            actual_seconds = self._progress_seconds_from_api(match)
-            if actual_seconds is None:
                 return
 
             with self._lock:
@@ -975,13 +977,19 @@ class WinUIBackend:
                 worker = self.workers.get(idx)
                 elapsed = int(getattr(worker, "elapsed_seconds", 0) or 0)
                 target_seconds = int(item.get("minutes", 0) or 0) * 60
+                actual_seconds = self._progress_seconds_from_api(match, target_seconds)
+                if actual_seconds is None:
+                    return
                 if target_seconds:
                     actual_seconds = min(actual_seconds, target_seconds)
                 displayed_seconds = int(item.get("cumulative_time", 0) or 0) + elapsed
                 drift = actual_seconds - displayed_seconds
                 if abs(drift) < 60:
-                    self._log_item(item, f"Timing check OK: Kick progress matches local timer within {self._format_duration(abs(drift))}")
                     return
+
+                if worker and elapsed > actual_seconds:
+                    worker.elapsed_seconds = actual_seconds
+                    elapsed = actual_seconds
 
                 corrected_base = max(0, actual_seconds - elapsed)
                 for other in self.config.items:
@@ -1009,22 +1017,29 @@ class WinUIBackend:
             with self._lock:
                 if 0 <= idx < len(self.config.items):
                     self._log_item(self.config.items[idx], f"Timing check failed: {exc}")
-        finally:
-            if driver:
-                try:
-                    driver.quit()
-                except Exception:
-                    pass
 
-    def _progress_seconds_from_api(self, progress):
+    def _progress_seconds_from_api(self, progress, target_seconds=0):
+        status = str(progress.get("status") or "").lower()
+        rewards = progress.get("rewards", []) if isinstance(progress.get("rewards"), list) else []
+        if target_seconds and (status in {"claimed", "completed", "complete"} or (rewards and all(bool(r.get("claimed")) for r in rewards if isinstance(r, dict)))):
+            return int(target_seconds)
+
         values = []
-        value = progress.get("progress_units")
-        if isinstance(value, (int, float)):
-            values.append(float(value))
-        for reward in progress.get("rewards", []) if isinstance(progress.get("rewards"), list) else []:
+        for key in ("progress_units", "current_units", "earned_units", "watched_units"):
+            value = progress.get(key)
+            if isinstance(value, (int, float)):
+                values.append(float(value))
+        for reward in rewards:
             if not isinstance(reward, dict):
                 continue
-            for key in ("progress_units", "current_units", "earned_units"):
+            required = reward.get("required_units") or reward.get("target_units")
+            progress_value = reward.get("progress")
+            if isinstance(required, (int, float)) and isinstance(progress_value, (int, float)):
+                if 0 <= progress_value <= 1:
+                    values.append(float(required) * float(progress_value))
+                elif 1 < progress_value <= 100:
+                    values.append(float(required) * (float(progress_value) / 100.0))
+            for key in ("progress_units", "current_units", "earned_units", "watched_units"):
                 reward_value = reward.get(key)
                 if isinstance(reward_value, (int, float)):
                     values.append(float(reward_value))

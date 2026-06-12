@@ -188,11 +188,27 @@ public sealed class PythonBridgeClient
             {
                 break;
             }
-            if (!string.IsNullOrWhiteSpace(line))
+            if (!string.IsNullOrWhiteSpace(line) && ShouldLogBridgeLine(line))
             {
                 AppServices.State.AddLog("Bridge", "", line);
             }
         }
+    }
+
+    private static bool ShouldLogBridgeLine(string line)
+    {
+        var trimmed = line.Trim();
+        if (trimmed.Length == 0)
+        {
+            return false;
+        }
+
+        return !(trimmed.StartsWith("Stacktrace:", StringComparison.OrdinalIgnoreCase)
+            || trimmed.StartsWith("at ", StringComparison.OrdinalIgnoreCase)
+            || trimmed.Contains("undetected_chromedriver!", StringComparison.OrdinalIgnoreCase)
+            || trimmed.Contains("KERNEL32!", StringComparison.OrdinalIgnoreCase)
+            || trimmed.Contains("ntdll!", StringComparison.OrdinalIgnoreCase)
+            || trimmed.Contains("(Session info:", StringComparison.OrdinalIgnoreCase));
     }
 
     private static TimeSpan CommandTimeout(string command)
